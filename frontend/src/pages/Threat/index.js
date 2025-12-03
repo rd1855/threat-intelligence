@@ -1,3 +1,9 @@
-import Threats from "./Threats";
+// src/pages/Threat/index.js
+import React from 'react';
+import Threats from './Threats';
 
-export {Threats};
+const ThreatPage = () => {
+  return <Threats />;
+};
+
+export default ThreatPage;

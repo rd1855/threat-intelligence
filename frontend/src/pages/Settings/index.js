@@ -1,3 +1,9 @@
-import Settings from "./Settings";
+// src/pages/Settings/index.js
+import React from 'react';
+import Settings from './Settings';
 
-export {Settings};
+const SettingsPage = () => {
+  return <Settings />;
+};
+
+export default SettingsPage;
