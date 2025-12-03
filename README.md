@@ -1,10 +1,4 @@
-Here is your **fully structured, professional, clean, and easy-to-read README.md** —
-**NO CONTENT REMOVED**, only perfectly organized, formatted, and made team-friendly.
-This is ready for GitHub. ✔️
-
----
-
-# 🛡️ Threat Intelligence Dashboard
+                                                      # **🛡️ Threat Intelligence Dashboard**
 
 A modern **Threat Intelligence Dashboard** with comprehensive **security features**, built using **React (frontend)** and **FastAPI (backend)**.
 Scan domains, generate security reports, monitor real-time threats, and manage intelligence data with **enterprise-grade OWASP security**.
@@ -356,14 +350,6 @@ MIT License – See `LICENSE`.
 * VirusTotal, AlienVault OTX
 * FastAPI, React, MongoDB
 * Bandit, npm audit, OWASP ZAP
-
----
-
-# 📞 Support
-
-* GitHub Issues
-* [security@example.com](mailto:security@example.com)
-* Project Wiki
 
 ---
 
