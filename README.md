@@ -1,4 +1,4 @@
-                                                      # **🛡️ Threat Intelligence Dashboard**
+# 🛡️ Threat Intelligence Dashboard
 
 A modern **Threat Intelligence Dashboard** with comprehensive **security features**, built using **React (frontend)** and **FastAPI (backend)**.
 Scan domains, generate security reports, monitor real-time threats, and manage intelligence data with **enterprise-grade OWASP security**.
@@ -272,23 +272,7 @@ docker run -v $(pwd):/zap/wrk -t owasp/zap2docker-stable zap-baseline.py \
   -t http://localhost:3000 -r security-report.html
 ```
 
-### Performance Testing
-
-```bash
-k6 run --vus 10 --duration 30s tests/load-test.js
-```
-
 ---
-
-# 🤝 Contributing
-
-### Workflow
-
-1. Fork repository
-2. Create feature branch
-3. Implement changes
-4. Add/update tests
-5. Submit pull request
 
 ### Security Checklist
 
@@ -335,12 +319,6 @@ python -m debugpy --listen 0.0.0.0:5678 -m uvicorn main:app --reload
 # Frontend debug
 npm start --verbose
 ```
-
----
-
-# 📄 License
-
-MIT License – See `LICENSE`.
 
 ---
 
