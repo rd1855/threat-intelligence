@@ -43,12 +43,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: "p/javascript"
-          generateSarif: true
-          sarifFile: semgrep.sarif   # IMPORTANT: explicit output file
+      - name: Install Semgrep
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install semgrep
+
+      - name: Run Semgrep (generate SARIF)
+        run: |
+          semgrep scan \
+            --config p/javascript \
+            --sarif \
+            --output semgrep.sarif
 
       - name: Verify SARIF file
         run: |
