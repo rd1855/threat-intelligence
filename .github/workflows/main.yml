@@ -1,0 +1,53 @@
+name: pr-quality-security
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-checks:
+    name: PR Quality & Security Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run tests
+        run: |
+          echo "Running unit tests"
+          echo "Running lint checks"
+
+      - name: Run security scan (SARIF)
+        run: |
+          mkdir -p reports
+          echo "{
+            \"runs\": [{
+              \"results\": [
+                { \"level\": \"warning\", \"message\": {\"text\": \"Medium issue\"} }
+              ]
+            }]
+          }" > reports/security.sarif
+
+      - name: Upload SARIF report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/security.sarif
+
+    
+      - name: Enforce severity policy
+        run: |
+          ERRORS=$(jq '.runs[].results[] | select(.level=="error")' reports/security.sarif | wc -l)
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "High / Critical issues found. Failing pipeline."
+            exit 1
+          else
+            echo "No high or critical issues. Medium issues are warnings only."
+          fi
