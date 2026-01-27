@@ -2,6 +2,9 @@ name: pr-quality-security
 
 on:
   pull_request:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
