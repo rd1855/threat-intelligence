@@ -49,13 +49,6 @@ jobs:
                         "shortDescription": {
                           "text": "Demo medium severity issue"
                         }
-                      },
-                      {
-                        "id": "HIGH001",
-                        "name": "Demo High Issue",
-                        "shortDescription": {
-                          "text": "Demo high severity issue"
-                        }
                       }
                     ]
                   }
@@ -66,7 +59,19 @@ jobs:
                     "level": "warning",
                     "message": {
                       "text": "This is a medium severity issue"
-                    }
+                    },
+                    "locations": [
+                      {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "README.md"
+                          },
+                          "region": {
+                            "startLine": 1
+                          }
+                        }
+                      }
+                    ]
                   }
                 ]
               }
