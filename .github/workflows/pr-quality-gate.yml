@@ -1,30 +1,69 @@
-name: PR Quality & Security Gate
+name: PR Feature → Develop (Quality & Security Gate)
 
+# -------------------------------------------------
+# WHEN this pipeline runs
+# -------------------------------------------------
 on:
   pull_request:
     branches:
       - develop
-      
+    # optional but recommended:
+    # ensures it runs only when source is feature/*
+    paths-ignore:
+      - docs/**
+      - README.md
+
+# -------------------------------------------------
+# Minimal permissions (security best practice)
+# -------------------------------------------------
 permissions:
   contents: read
-  security-events: write   
+  security-events: write   # required for SARIF uploads
 
+# -------------------------------------------------
+# Concurrency
+# Cancel old runs when new commits are pushed
+# -------------------------------------------------
 concurrency:
   group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+# -------------------------------------------------
+# JOBS
+# -------------------------------------------------
 jobs:
 
+  # =================================================
+  # 1️⃣ CHECKOUT & BASIC VALIDATION
+  # =================================================
+  validate:
+    name: Validate PR Metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Ensure PR is from feature branch
+        run: |
+          echo "Source branch: ${{ github.head_ref }}"
+          if [[ ! "${{ github.head_ref }}" =~ ^feature/ ]]; then
+            echo "❌ PR must come from feature/* branch"
+            exit 1
+          fi
+
+  # =================================================
+  # 2️⃣ SECRET SCANNING (GITLEAKS)
+  # =================================================
   gitleaks:
     name: Secret Scan (Gitleaks)
     runs-on: ubuntu-latest
+    needs: validate
     timeout-minutes: 10
 
     steps:
-      - name: Checkout code
+      - name: Checkout full history
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # REQUIRED to scan full git history
+          fetch-depth: 0   # required for git history scan
 
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v2
@@ -33,8 +72,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # =================================================
+  # 3️⃣ STATIC CODE ANALYSIS (SEMGREP)
+  # =================================================
   semgrep:
-    name: Static Code Scan (Semgrep)
+    name: Static Code Analysis (Semgrep)
     runs-on: ubuntu-latest
     needs: gitleaks
     timeout-minutes: 15
@@ -48,7 +90,7 @@ jobs:
           python3 -m pip install --upgrade pip
           pip install semgrep
 
-      - name: Run Semgrep (SARIF)
+      - name: Run Semgrep (SARIF output)
         run: |
           semgrep scan \
             --config p/javascript \
@@ -60,6 +102,9 @@ jobs:
         with:
           sarif_file: semgrep.sarif
 
+  # =================================================
+  # 4️⃣ DEPENDENCY VULNERABILITY SCAN (OWASP)
+  # =================================================
   dependency-check:
     name: Dependency Vulnerability Scan
     runs-on: ubuntu-latest
@@ -73,7 +118,7 @@ jobs:
       - name: Run OWASP Dependency Check
         uses: dependency-check/Dependency-Check_Action@main
         with:
-          project: "Threat-Intelligence"
+          project: "feature-pr-scan"
           path: "."
           format: "HTML"
           out: "dependency-check-report"
@@ -87,6 +132,9 @@ jobs:
           name: dependency-check-report
           path: dependency-check-report
 
+  # =================================================
+  # 5️⃣ BUILD & UNIT TESTS
+  # =================================================
   build-and-test:
     name: Build & Unit Tests
     runs-on: ubuntu-latest
