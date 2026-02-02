@@ -1,0 +1,12 @@
+name: TEST TRIGGER
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "PR pipeline triggered"
