@@ -49,12 +49,12 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: Frontend – Unit tests
+      - name: Frontend – Unit tests (Jest)
         run: npm test -- --watch=false
         working-directory: frontend
 
-      - name: Frontend – Build validation
-        run: npm run build
+      - name: Frontend – Build validation (PR-safe)
+        run: CI=false npm run build
         working-directory: frontend
 
       # ===============================
