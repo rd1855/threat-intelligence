@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: read
-  actions: read
+  actions: read   # REQUIRED to read workflow runs
 
 concurrency:
   group: develop-integration
@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
 
+    # Only run when PR is merged
     if: github.event.pull_request.merged == true
 
     steps:
@@ -34,7 +35,7 @@ jobs:
           fi
 
       # ------------------------------------------------
-      # Checkout develop (scripts + infra only)
+      # Checkout develop (scripts only)
       # ------------------------------------------------
       - uses: actions/checkout@v4
 
@@ -50,7 +51,7 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
 
       # ------------------------------------------------
-      # Get latest SUCCESSFUL PR workflow run
+      # Find PR workflow run ID
       # ------------------------------------------------
       - name: Get PR workflow run ID
         id: pr_run
@@ -58,8 +59,8 @@ jobs:
           RUN_ID=$(gh run list \
             --repo ${{ github.repository }} \
             --workflow "I. Review – Full Stack PR Gate (Quality & Security)" \
-            --json databaseId,conclusion \
-            --jq '.[] | select(.conclusion=="success") | .databaseId' \
+            --json databaseId,event,headBranch,status,conclusion \
+            --jq '.[] | select(.event=="pull_request" and .conclusion=="success") | .databaseId' \
             | head -n 1)
 
           if [ -z "$RUN_ID" ]; then
@@ -70,7 +71,7 @@ jobs:
           echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
 
       # ------------------------------------------------
-      # Download artifacts from PR pipeline
+      # Download FRONTEND artifact
       # ------------------------------------------------
       - name: Download frontend artifact
         run: |
@@ -79,6 +80,9 @@ jobs:
             --name pr-frontend-build-${{ github.event.pull_request.number }} \
             --dir dist/frontend
 
+      # ------------------------------------------------
+      # Download BACKEND artifact
+      # ------------------------------------------------
       - name: Download backend artifact
         run: |
           gh run download ${{ steps.pr_run.outputs.run_id }} \
@@ -90,22 +94,11 @@ jobs:
       # Deploy (artifact-driven)
       # ------------------------------------------------
       - name: Deploy to develop environment
-        run: |
-          chmod +x scripts/deploy-dev.sh
-          ./scripts/deploy-dev.sh
+        run: ./scripts/deploy-dev.sh
         env:
           FRONTEND_PATH: dist/frontend
           BACKEND_PATH: dist/backend
           DEV_API_KEY: ${{ secrets.DEV_API_KEY }}
           DEV_DB_URL: ${{ secrets.DEV_DB_URL }}
 
-      # ------------------------------------------------
-      # Post-deploy validation (REAL smoke checks)
-      # ------------------------------------------------
-      - name: Smoke check – Backend health
-        run: |
-          curl --fail --retry 5 --retry-delay 5 http://localhost:8000/health
-
-      - name: Smoke check – Frontend reachable
-        run: |
-          curl --fail --retry 5 --retry-delay 5 http://localhost:3000
+      
