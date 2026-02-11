@@ -1,9 +1,8 @@
-name: I. Review – Full Stack PR Gate
+name: I. Review – Full Stack PR Gate (Quality & Security)
 
 on:
   pull_request:
-    branches:
-      - develop
+    branches: [ develop ]
     paths-ignore:
       - docs/**
       - README.md
@@ -18,9 +17,8 @@ concurrency:
 
 jobs:
   review:
-    name: Frontend + Backend Validation
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       # ------------------------------------------------
@@ -30,15 +28,70 @@ jobs:
         run: |
           echo "PR source: ${{ github.head_ref }}"
           if [[ ! "${{ github.head_ref }}" =~ ^feature/ ]]; then
-            echo "❌ Only feature/* branches can open PRs to develop"
+            echo "❌ Only feature/* branches allowed"
             exit 1
           fi
 
-      - name: Checkout code
-        uses: actions/checkout@v4
+      # ------------------------------------------------
+      # Checkout full history (required for scanners)
+      # ------------------------------------------------
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # =================================================
-      # FRONTEND
+      # SECRET SCANNING
+      # =================================================
+      - name: Secret Scan – TruffleHog
+        uses: trufflesecurity/trufflehog@v3
+        with:
+          scan-path: .
+          extra-args: --no-update
+
+      # =================================================
+      # STATIC CODE ANALYSIS – Semgrep
+      # =================================================
+      - name: Semgrep SAST
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/ci
+
+      # =================================================
+      # CODEQL – Deep Static Analysis
+      # =================================================
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, python
+
+      - name: CodeQL Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: CodeQL Analyze
+        uses: github/codeql-action/analyze@v3
+
+      # =================================================
+      # DEPENDENCY VULNERABILITY – OWASP
+      # =================================================
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@v3
+        with:
+          project: "threat-intelligence"
+          path: .
+          format: "HTML"
+          out: dependency-check-report
+          args: >
+            --failOnCVSS 7
+
+      - name: Upload OWASP report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-owasp-report-${{ github.event.pull_request.number }}
+          path: dependency-check-report/
+          retention-days: 5
+
+      # =================================================
+      # FRONTEND – TEST + BUILD
       # =================================================
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -55,7 +108,7 @@ jobs:
         run: npm test -- --watch=false
         working-directory: frontend
 
-      - name: Frontend – Build artifact (PR-safe)
+      - name: Frontend – Build (PR-safe)
         run: CI=false npm run build
         working-directory: frontend
 
@@ -67,7 +120,7 @@ jobs:
           retention-days: 3
 
       # =================================================
-      # BACKEND
+      # BACKEND – TEST + PACKAGE
       # =================================================
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -85,14 +138,13 @@ jobs:
         run: python -m pytest || true
         working-directory: backend
 
-      - name: Package backend source
+      - name: Package backend artifact
         run: |
           mkdir -p backend-artifact
           rsync -av backend/ backend-artifact/ \
             --exclude __pycache__ \
             --exclude .pytest_cache \
             --exclude .venv
-        working-directory: .
 
       - name: Upload backend artifact
         uses: actions/upload-artifact@v4
