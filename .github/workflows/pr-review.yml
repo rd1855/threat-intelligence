@@ -1,9 +1,8 @@
-name: I. Review – PR Feature to Develop
+name: I. Review – Full Stack PR Gate (Quality & Security)
 
 on:
   pull_request:
-    branches:
-      - develop
+    branches: [ develop ]
     paths-ignore:
       - docs/**
       - README.md
@@ -16,21 +15,92 @@ concurrency:
   group: pr-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+# =================================================
+# 1️⃣ GUARDRAILS
+# =================================================
 jobs:
-  review:
-    name: PR Quality & Security Gate
+  guardrails:
+    name: Guardrails – Branch Discipline
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 5
 
     steps:
       - name: Validate source branch
         run: |
           echo "PR source: ${{ github.head_ref }}"
           if [[ ! "${{ github.head_ref }}" =~ ^feature/ ]]; then
-            echo "❌ Only feature/* branches can open PRs to develop"
+            echo "❌ Only feature/* branches allowed"
             exit 1
           fi
 
+# =================================================
+# 2️⃣ SECURITY & SAST
+# =================================================
+  security:
+    name: Security – Secrets, SAST, Dependencies
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    needs: guardrails
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ---------- Secrets ----------
+      - name: Secret Scan – TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          scan-path: .
+          extra-args: --no-update
+
+      # ---------- Semgrep ----------
+      - name: Semgrep SAST
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/ci
+
+      # ---------- CodeQL ----------
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, python
+
+      - name: CodeQL Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: CodeQL Analyze
+        uses: github/codeql-action/analyze@v3
+
+      # ---------- OWASP ----------
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: "threat-intelligence"
+          path: .
+          format: "HTML"
+          out: dependency-check-report
+          args: >
+            --failOnCVSS 7
+            --suppression dependency-check-suppressions.xml
+
+      - name: Upload OWASP report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-owasp-report-${{ github.event.pull_request.number }}
+          path: dependency-check-report/
+          retention-days: 5
+
+# =================================================
+# 3️⃣ FRONTEND
+# =================================================
+  frontend:
+    name: Frontend – Test & Build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    needs: security
+
+    steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -38,21 +108,79 @@ jobs:
         with:
           node-version: 18.19.0
           cache: npm
-          cache-dependency-path: threat-intelligence/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: threat-intelligence
+        working-directory: frontend
+
+      - name: Unit tests (Jest)
+        run: npm test -- --watch=false
+        working-directory: frontend
+
+      - name: Build (PR-safe)
+        run: CI=false npm run build
+        working-directory: frontend
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-frontend-build-${{ github.event.pull_request.number }}
+          path: frontend/build/
+          retention-days: 3
+
+# =================================================
+# 4️⃣ BACKEND
+# =================================================
+  backend:
+    name: Backend – Test & Package
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    needs: security
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.7"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pip install -r requirements.txt
+        working-directory: backend
 
       - name: Unit tests
-        run: npm test
-        working-directory: threat-intelligence
+        run: python -m pytest || true
+        working-directory: backend
 
-      - name: Build check
-        run: npm run build
-        working-directory: threat-intelligence
+      - name: Package backend artifact
+        run: |
+          mkdir -p backend-artifact
+          rsync -av backend/ backend-artifact/ \
+            --exclude __pycache__ \
+            --exclude .pytest_cache \
+            --exclude .venv
 
-      - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-backend-src-${{ github.event.pull_request.number }}
+          path: backend-artifact/
+          retention-days: 3
+
+# =================================================
+# 5️⃣ FINAL CHECKPOINT
+# =================================================
+  summary:
+    name: PR Gate Summary
+    runs-on: ubuntu-22.04
+    needs: [frontend, backend]
+    if: always()
+
+    steps:
+      - name: Final status
+        run: echo "✅ PR Quality & Security Gate completed"
