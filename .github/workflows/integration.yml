@@ -2,13 +2,12 @@ name: II. Integration – Merge to Develop
 
 on:
   pull_request:
-    branches:
-      - develop
-    types:
-      - closed
+    branches: [ develop ]
+    types: [ closed ]
 
 permissions:
   contents: read
+  actions: read   # REQUIRED to read workflow runs
 
 concurrency:
   group: develop-integration
@@ -20,12 +19,12 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
 
-    # Run ONLY when PR is actually merged
+    # Only run when PR is merged
     if: github.event.pull_request.merged == true
 
     steps:
       # ------------------------------------------------
-      # Guardrail: only feature/* merges
+      # Guardrail – feature/* only
       # ------------------------------------------------
       - name: Validate merged branch
         run: |
@@ -36,31 +35,63 @@ jobs:
           fi
 
       # ------------------------------------------------
-      # Checkout develop (infra + scripts only)
+      # Checkout develop (scripts only)
       # ------------------------------------------------
-      - name: Checkout develop branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       # ------------------------------------------------
-      # Download FRONTEND artifact (from PR)
+      # Setup GitHub CLI
+      # ------------------------------------------------
+      - name: Setup GitHub CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh
+
+      - name: Authenticate gh
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      # ------------------------------------------------
+      # Find PR workflow run ID
+      # ------------------------------------------------
+      - name: Get PR workflow run ID
+        id: pr_run
+        run: |
+          RUN_ID=$(gh run list \
+            --repo ${{ github.repository }} \
+            --workflow "I. Review – Full Stack PR Gate (Quality & Security)" \
+            --json databaseId,event,headBranch,status,conclusion \
+            --jq '.[] | select(.event=="pull_request" and .conclusion=="success") | .databaseId' \
+            | head -n 1)
+
+          if [ -z "$RUN_ID" ]; then
+            echo "❌ No successful PR workflow run found"
+            exit 1
+          fi
+
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+
+      # ------------------------------------------------
+      # Download FRONTEND artifact
       # ------------------------------------------------
       - name: Download frontend artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: pr-frontend-build-${{ github.event.pull_request.number }}
-          path: dist/frontend/
+        run: |
+          gh run download ${{ steps.pr_run.outputs.run_id }} \
+            --repo ${{ github.repository }} \
+            --name pr-frontend-build-${{ github.event.pull_request.number }} \
+            --dir dist/frontend
 
       # ------------------------------------------------
-      # Download BACKEND artifact (from PR)
+      # Download BACKEND artifact
       # ------------------------------------------------
       - name: Download backend artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: pr-backend-src-${{ github.event.pull_request.number }}
-          path: dist/backend/
+        run: |
+          gh run download ${{ steps.pr_run.outputs.run_id }} \
+            --repo ${{ github.repository }} \
+            --name pr-backend-src-${{ github.event.pull_request.number }} \
+            --dir dist/backend
 
       # ------------------------------------------------
-      # Deploy BOTH (artifact-driven)
+      # Deploy (artifact-driven)
       # ------------------------------------------------
       - name: Deploy to develop environment
         run: ./scripts/deploy-dev.sh
